@@ -247,7 +247,7 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
     if (max_idx == 0)
       return recognitions;
 
-    float dx, dy, w, h, side, center_wo_offst_x, center_wo_offst_y, center_x, center_y;
+    float dx, dy, w, h, side, center_wo_offst_x, center_wo_offst_y;
     dx = candidate_detect[max_idx][0];
     dy = candidate_detect[max_idx][1];
     w = candidate_detect[max_idx][2] * 1.5f;
@@ -259,15 +259,25 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
     LOGGER.d("dx = "+dx+", dy = "+dy + ", w = "+w+", h = "+h + " center_offset_x = "+ center_wo_offst_x + " center_offset_y = "+ center_wo_offst_y);
 
     side = Math.max(w, h);
+    int keypoint_side= 5;
 
-    center_x = dx + side;
-    center_y = dy + side;
+    for (int k = 4;k < candidate_detect[max_idx].length; k+=2 ){
+      LOGGER.d("keypoint = "+ candidate_detect[max_idx][k]);
 
-    recognitions.add(new Recognition("" + max_idx, "palm",  (float)(1 / (1 + Math.exp(-outputClf[0][max_idx][0]))), new RectF(
+      recognitions.add(new Recognition("" + k, "keypoint",  (float)(1 / (1 + Math.exp(-outputClf[0][max_idx][0]))), new RectF(
+              candidate_detect[max_idx][k]+center_wo_offst_x*inputSize - keypoint_side,
+              candidate_detect[max_idx][k+1]+center_wo_offst_y*inputSize - keypoint_side,
+              candidate_detect[max_idx][k]+center_wo_offst_x*inputSize + keypoint_side,
+              candidate_detect[max_idx][k+1]+center_wo_offst_y*inputSize + keypoint_side)));
+    }
+
+    recognitions.add(new Recognition("" + 0, "palm",  (float)(1 / (1 + Math.exp(-outputClf[0][max_idx][0]))), new RectF(
             center_wo_offst_x*inputSize - side/2,
             center_wo_offst_y*inputSize - side/2,
             center_wo_offst_x*inputSize+ side/2,
             center_wo_offst_y*inputSize+side/2)));
+
+
 
 //    ArrayList<Integer> max_idx = new ArrayList<Integer>();
 //    candidate_detect.stream().max(new Comparator<float[]>() {
