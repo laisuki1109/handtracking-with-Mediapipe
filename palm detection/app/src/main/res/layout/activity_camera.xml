@@ -20,8 +20,7 @@
     android:layout_height="match_parent"
     android:background="#00000000">
 
-    <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
-        xmlns:tools="http://schemas.android.com/tools"
+    <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="@android:color/black"
@@ -47,6 +46,11 @@
                 android:layout_height="wrap_content"
                 android:src="@drawable/tfl2_logo" />
         </androidx.appcompat.widget.Toolbar>
+
+        <ImageView
+            android:id="@+id/landmarkView"
+            android:layout_width="386dp"
+            android:layout_height="301dp" />
 
     </RelativeLayout>
 

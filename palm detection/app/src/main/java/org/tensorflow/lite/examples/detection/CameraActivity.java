@@ -50,6 +50,8 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import java.nio.ByteBuffer;
+
+import org.opencv.android.OpenCVLoader;
 import org.tensorflow.lite.examples.detection.env.ImageUtils;
 import org.tensorflow.lite.examples.detection.env.Logger;
 
@@ -90,6 +92,12 @@ public abstract class CameraActivity extends AppCompatActivity
   protected void onCreate(final Bundle savedInstanceState) {
     LOGGER.d("onCreate " + this);
     super.onCreate(null);
+
+    if (!OpenCVLoader.initDebug())
+      LOGGER.e("OpenCv", "Unable to load OpenCV");
+    else
+      LOGGER.d("OpenCv", "OpenCV loaded");
+
     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
     setContentView(R.layout.activity_camera);

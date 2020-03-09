@@ -45,4 +45,9 @@ dependencies {
     implementation 'androidx.coordinatorlayout:coordinatorlayout:1.0.0'
     implementation 'com.google.android.material:material:1.0.0'
     implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
+    // opencv 4.1.0
+    implementation 'com.quickbirdstudios:opencv:4.1.0'
+
+    // opencv 4.1.0 with contribution packages
+    implementation 'com.quickbirdstudios:opencv:4.1.0-contrib'
 }

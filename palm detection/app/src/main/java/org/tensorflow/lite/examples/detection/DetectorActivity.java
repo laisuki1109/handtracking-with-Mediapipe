@@ -18,6 +18,7 @@ package org.tensorflow.lite.examples.detection;
 
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.Config;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Matrix;
@@ -26,6 +27,7 @@ import android.graphics.Paint.Style;
 import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.media.ImageReader.OnImageAvailableListener;
+import android.os.Environment;
 import android.os.SystemClock;
 import android.util.Log;
 import android.util.Size;
@@ -58,8 +60,8 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   private static final DetectorMode MODE = DetectorMode.TF_OD_API;
   // Minimum detection confidence to track a detection.
   private static final float MINIMUM_CONFIDENCE_TF_OD_API = 0.0f;
-  private static final boolean MAINTAIN_ASPECT = false;
-  private static final Size DESIRED_PREVIEW_SIZE = new Size(640, 480);
+  private static final boolean MAINTAIN_ASPECT = true;
+  private static final Size DESIRED_PREVIEW_SIZE = new Size(1280, 720);
   private static final boolean SAVE_PREVIEW_BITMAP = false;
   private static final float TEXT_SIZE_DIP = 10;
   OverlayView trackingOverlay;
@@ -117,7 +119,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     previewWidth = size.getWidth();
     previewHeight = size.getHeight();
 
-    sensorOrientation = rotation - getScreenOrientation();
+    sensorOrientation = 0; //rotation - getScreenOrientation();
     LOGGER.i("Camera orientation relative to screen canvas: %d", sensorOrientation);
 
     LOGGER.i("Initializing at size %dx%d", previewWidth, previewHeight);
@@ -162,7 +164,9 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     computingDetection = true;
     LOGGER.i("Preparing image " + currTimestamp + " for detection in bg thread.");
 
-    rgbFrameBitmap.setPixels(getRgbBytes(), 0, previewWidth, 0, 0, previewWidth, previewHeight);
+//    rgbFrameBitmap = BitmapFactory.decodeFile(Environment.getExternalStorageDirectory()+"/"+Environment.DIRECTORY_DCIM+"/20200203_204820.jpg");
+    rgbFrameBitmap = BitmapFactory.decodeFile(Environment.getExternalStorageDirectory()+"/"+Environment.DIRECTORY_DCIM+"/img_norm.bmp");
+//    rgbFrameBitmap.setPixels(getRgbBytes(), 0, previewWidth, 0, 0, previewWidth, previewHeight);
 
     readyForNextImage();
 
@@ -204,7 +208,8 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
               if (location != null && result.getConfidence() >= minimumConfidence) {
                 canvas.drawRect(location, paint);
 
-                cropToFrameTransform.mapRect(location);
+//                if (result.getTitle() != "origPoint")
+//                  cropToFrameTransform.mapRect(location);
 
                 result.setLocation(location);
                 mappedRecognitions.add(result);
