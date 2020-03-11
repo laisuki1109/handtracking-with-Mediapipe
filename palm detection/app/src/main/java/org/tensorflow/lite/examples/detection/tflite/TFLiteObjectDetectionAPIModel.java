@@ -22,6 +22,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.PointF;
 import android.graphics.RectF;
@@ -48,19 +49,19 @@ import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
 import java.util.Vector;
-import java.util.stream.DoubleStream;
+
 
 import org.opencv.android.Utils;
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfFloat;
 import org.opencv.core.MatOfPoint2f;
 import org.opencv.core.MatOfRotatedRect;
 import org.opencv.core.Point;
@@ -196,17 +197,15 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
     int x = 0;
       while (scanner.hasNextLine()) {
 //        records.add(getRecordFromLine());
-        // with x * 256 and y * 256
         String[] cols = scanner.nextLine().split(",");
         anchors[x++] = new float[]{Float.valueOf(cols[0]) , Float.valueOf(cols[1]) , Float.valueOf(cols[2]), Float.valueOf(cols[3])};
       }
     }
-
     return d;
   }
 
   @Override
-  public List<Recognition> recognizeImage(Bitmap bitmap) {
+  public List<Recognition> recognizeImage(Bitmap bitmap, Bitmap oribmp) {
     // Log this method so that it can be analyzed with systrace.
     Trace.beginSection("recognizeImage");
 
@@ -214,10 +213,22 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
     // Preprocess the image data from 0-255 int to normalized float based
     // on the provided parameters.
 
-//    bitmap = BitmapFactory.decodeFile(Environment.getExternalStorageDirectory()+"/"+Environment.DIRECTORY_DCIM+"/img_norm.bmp");
-    bitmap = BitmapFactory.decodeFile(Environment.getExternalStorageDirectory()+"/"+Environment.DIRECTORY_DCIM+"/img_small.bmp");
-    bitmap.getPixels(intValues, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
+//    try {
+//      LOGGER.d("path = "+Environment.getExternalStorageDirectory()+"/"+Environment.DIRECTORY_DCIM+"/"+new SimpleDateFormat("EEEEE dd MMMMM yyyy HH:mm:ss.SSSZ").format(new Date())+".jpg");
+//      File f = new File(Environment.getExternalStorageDirectory()+"/"+Environment.DIRECTORY_DCIM+"/"+new SimpleDateFormat("EEEEE dd MMMMM yyyy HH:mm:ss.SSSZ").format(new Date())+".jpg");
+//      f.createNewFile();
+//      FileOutputStream fos = new FileOutputStream(f);
+//      if (bitmap.compress(Bitmap.CompressFormat.JPEG, 100, fos)){
+//        fos.flush();
+//      }
+//      fos.close();
+//    } catch (FileNotFoundException e) {
+//      e.printStackTrace();
+//    } catch (IOException e) {
+//      e.printStackTrace();
+//    }
 
+    bitmap.getPixels(intValues, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
     // put the image in imgData
     imgData.rewind();
     for (int i = 0; i < inputSize; ++i) {
@@ -303,12 +314,11 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
           LOGGER.d("clf_max_idx = " + clf_max_idx);
 //          LOGGER.d("anchors["+i+"] = "+anchors[i][0]+", "+anchors[i][1]);
         }
-//        candidate_detect[i] = outputReg[0][i];
       }
     }
     LOGGER.d("count = "+count);
-    //if (candidate_detect.size() == 0)
-    //  return recognitions;
+    if (candidate_detect_array.size() == 0)
+      return recognitions;
 
     float[][] candidate_detect = new float[candidate_detect_array.size()][18];
     float[][] candidate_anchors = new float[candidate_anchors_array.size()][4];
@@ -319,12 +329,8 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
       LOGGER.d("candidate_detect["+i+"][3] = "+candidate_detect[i][3]);
     }
 
-
     LOGGER.d("max_idx = "+ max_idx);
     LOGGER.d("max_suggestion = "+ max_suggestion);
-//
-//    if (max_idx == 0)
-//      return recognitions;
 
   // palm detection result
     float dx, dy, w, h, side, center_wo_offst_x, center_wo_offst_y;
@@ -334,12 +340,11 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
     h = candidate_detect[max_idx][3];
     center_wo_offst_x = candidate_anchors[max_idx][0] * inputSize;
     center_wo_offst_y = candidate_anchors[max_idx][1] * inputSize;
-    LOGGER.d("dx = "+dx+", dy = "+dy + ", w = "+w+", h = "+h + " center_offset_x = "+ center_wo_offst_x + " center_offset_y = "+ center_wo_offst_y);
-
-    LOGGER.d("max_id = " + max_idx);
-
     side = Math.max(w, h) * 1.5f;
     int keypoint_side = 5;
+    LOGGER.d("dx = "+dx+", dy = "+dy + ", w = "+w+", h = "+h + " center_offset_x = "+ center_wo_offst_x + " center_offset_y = "+ center_wo_offst_y);
+    LOGGER.d("max_id = " + max_idx);
+
     // mark 3 keypoints in palm (kp0, kp1, kp2)
     Point[] kp = new Point[]{
             new Point(candidate_detect[max_idx][4] + center_wo_offst_x, candidate_detect[max_idx][5] + center_wo_offst_y),
@@ -349,28 +354,22 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
     LOGGER.d("kp0 x = " + kp[0].x + " kp0 y = " + kp[0].y );
     LOGGER.d("kp2 x = " + kp[2].x + " kp2 y = " + kp[2].y );
 
-
+    // calculate the source and triangle for img landmark
     float[][] source_raw = getTriangle((float)kp[0].x, (float)kp[0].y, (float)kp[2].x, (float)kp[2].y, side);
-
-    float scale = 1280f/256f ;
+    float scale = Math.max(oribmp.getHeight()/256f , oribmp.getWidth()/256f) ;
+    LOGGER.d("scale = " + scale);
     MatOfPoint2f source = new MatOfPoint2f(new Point(source_raw[0][0]* scale, source_raw[0][1]*scale),
                                   new Point(source_raw[1][0]*scale, source_raw[1][1]*scale),
                                   new Point(source_raw[2][0]*scale, source_raw[2][1]*scale));
 
-
-    MatOfPoint2f sourceNoScale = new MatOfPoint2f(new Point(source_raw[0][0], source_raw[0][1]),
-            new Point(source_raw[1][0], source_raw[1][1]),
-            new Point(source_raw[2][0], source_raw[2][1]));
-
     LOGGER.d("source = " + source);
     LOGGER.d("source_raw = " + Arrays.toString(source_raw[0]) +  Arrays.toString(source_raw[1])+  Arrays.toString(source_raw[2]));
-
 
     MatOfPoint2f targetTriangle = new MatOfPoint2f(new Point(128f, 128f),
             new Point(128f, 0),
             new Point(0, 128f));
 
-    //7 initial keypoints for palm
+    //print 7 initial keypoints for palm
     for (int k = 4;k < candidate_detect[max_idx].length; k+=2 ){
       float kp_x = candidate_detect[max_idx][k]+center_wo_offst_x;
       float kp_y = candidate_detect[max_idx][k+1]+center_wo_offst_y;
@@ -381,9 +380,13 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
               candidate_detect[max_idx][k+1]+center_wo_offst_y - keypoint_side,
               candidate_detect[max_idx][k]+center_wo_offst_x + keypoint_side,
               candidate_detect[max_idx][k+1]+center_wo_offst_y + keypoint_side)));
-      bitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true);
-      bitmap.setPixel(Float.valueOf(kp_x).intValue(), Float.valueOf(kp_y).intValue(), Color.GREEN);
     }
+    // print the palm bbox
+    recognitions.add(new Recognition("" + 0, "palm",  (float)(1 / (1 + Math.exp(-outputClf[0][clf_max_idx][0]))), new RectF(
+            center_wo_offst_x - side/2,
+            center_wo_offst_y - side/2,
+            center_wo_offst_x + side/2,
+            center_wo_offst_y + side/2)));
 //
 //    try {
 //      LOGGER.d("path = "+Environment.getExternalStorageDirectory()+"/"+Environment.DIRECTORY_DCIM+"/"+new SimpleDateFormat("EEEEE dd MMMMM yyyy HH:mm:ss.SSSZ").format(new Date())+".jpg");
@@ -400,43 +403,70 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
 //      e.printStackTrace();
 //    }
 
-    recognitions.add(new Recognition("" + 0, "palm",  (float)(1 / (1 + Math.exp(-outputClf[0][clf_max_idx][0]))), new RectF(
-            center_wo_offst_x - side/2,
-            center_wo_offst_y - side/2,
-            center_wo_offst_x + side/2,
-            center_wo_offst_y + side/2)));
+
 
     Mat mtr = Imgproc.getAffineTransform(source, targetTriangle);
     LOGGER.d("mtr = "+ mtr.dump());
+    // cal Mtr inverse for returning the point
+    Mat mtrr = new Mat();
+    mtrr.create(2, 3, CvType.CV_32FC1);
+    mtr.convertTo(mtrr, CvType.CV_32FC1);
+
+
+    // add row {0,0,0}
+    // change (2,2) --> 1 && convert to float 32
+    Mat row = new Mat(1,3,CvType.CV_32FC1);
+    row.put(0, 0, 0f);
+    row.put(0, 1, 0f);
+    row.put(0, 2, 1f);
+    mtrr.push_back(row);
+
+    Mat minv  = mtrr.inv(); //inverse and transpose
+    Mat mtri = minv.rowRange(0, 2);
+    LOGGER.d("mtr = "+ mtr.dump());
+    LOGGER.d("mtrr = "+ mtrr.dump());
+
+//    LOGGER.d("minv = "+ minv.dump());
+//    LOGGER.d("mtri = "+mtri.dump());
+
+    Matrix mMtr = new Matrix();
+    transformMatrix(mtrr, mMtr);
+    float[] range = {1,0,0,0,1,0,0,0,1};
+    mMtr.mapPoints(range);
+    LOGGER.d("mMtr = " + Arrays.toString(range));
+    Matrix mRot = new Matrix();
+    mRot.postRotate(90);
+    mRot.postTranslate(oribmp.getHeight()+((oribmp.getWidth()-oribmp.getHeight())/2f), 0);
 
     // make bitmap for original bitmap 1280*720 to 1280*1280 pad image
-    Bitmap origBitmap = BitmapFactory.decodeFile(Environment.getExternalStorageDirectory()+"/"+Environment.DIRECTORY_DCIM+"/20200203_204820.jpg");
+//    Bitmap origBitmap = BitmapFactory.decodeFile(Environment.getExternalStorageDirectory()+"/"+Environment.DIRECTORY_DCIM+"/20200203_204820.jpg");
+    Bitmap origBitmap = oribmp;
     Bitmap bitmapPad = Bitmap.createBitmap(1280, 1280, Bitmap.Config.ARGB_8888);
+    Bitmap affineBitmap = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888);
 
-    for(int i=0; i<1280; i++) {
-      for(int j=0; j<720; j++) {
-        bitmapPad.setPixel(i, ((1280-720)/2) + j, origBitmap.getPixel(i, j));
-      }
-    }
-    Mat imgPad = new Mat(1280, 1280, CvType.CV_8UC4);
-    Utils.bitmapToMat(bitmapPad, imgPad);
-    LOGGER.d("imgPad = "+imgPad.toString());
+    final Canvas rotatedCanvas = new Canvas(bitmapPad);
+    rotatedCanvas.drawBitmap(origBitmap, mRot, null);
 
-    //make img Pad
-    Mat imgPadFloat = norm2(imgPad);
+    final Canvas applyAffineCanvas = new Canvas(affineBitmap);
+    applyAffineCanvas.drawBitmap(bitmapPad, mMtr, null);
 
-    //make img landmark
-    Mat imgLandmark = new Mat(256, 256, CvType.CV_32FC4);
-    Imgproc.warpAffine(imgPadFloat, imgLandmark, mtr, new Size(256, 256));
+//    try {
+//      LOGGER.d("path = "+Environment.getExternalStorageDirectory()+"/"+Environment.DIRECTORY_DCIM+"/"+new SimpleDateFormat("EEEEE dd MMMMM yyyy HH:mm:ss.SSSZ").format(new Date())+".jpg");
+//      File f = new File(Environment.getExternalStorageDirectory()+"/"+Environment.DIRECTORY_DCIM+"/"+new SimpleDateFormat("EEEEE dd MMMMM yyyy HH:mm:ss.SSSZ").format(new Date())+".jpg");
+//      f.createNewFile();
+//      FileOutputStream fos = new FileOutputStream(f);
+//      if (bmp.compress(Bitmap.CompressFormat.JPEG, 100, fos)){
+//        fos.flush();
+//      }
+//      fos.close();
+//    } catch (FileNotFoundException e) {
+//      e.printStackTrace();
+//    } catch (IOException e) {
+//      e.printStackTrace();
+//    }
 
-    Bitmap bmp = Bitmap.createBitmap(imgLandmark.width(), imgLandmark.height(), Bitmap.Config.ARGB_8888);
-    Mat imgLandmarkOut = new Mat(imgLandmark.width(), imgLandmark.height(), CvType.CV_8UC4);
-    imgLandmark.convertTo(imgLandmarkOut, CvType.CV_8UC4);
-    Utils.matToBitmap(imgLandmarkOut, bmp);
-
-//    Bitmap bmp = BitmapFactory.decodeFile(Environment.getExternalStorageDirectory()+"/"+Environment.DIRECTORY_DCIM+"/img_landmark.bmp");
 // store imglandmark as byte buffer for tensorflow
-    bmp.getPixels(intValues, 0, 256, 0, 0, 256, 256);
+    affineBitmap.getPixels(intValues, 0, 256, 0, 0, 256, 256);
     imgData.rewind();
     for (int i = 0; i < inputSize; ++i) {
       for (int j = 0; j < inputSize; ++j) {
@@ -447,32 +477,12 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
           imgData.put((byte) ((pixelValue >> 8) & 0xFF));
           imgData.put((byte) (pixelValue & 0xFF));
         } else { // Float model
-//          imgData.putFloat((((pixelValue >> 16) & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
-//          imgData.putFloat((((pixelValue >> 8) & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
-//          imgData.putFloat(((pixelValue & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
-
           imgData.putFloat(((((pixelValue >> 16) & 0xFF) / 255f) - .5f) * 2);
           imgData.putFloat(((((pixelValue >> 8) & 0xFF) / 255f) - .5f) * 2);
           imgData.putFloat((((pixelValue & 0xFF) / 255f) - .5f) * 2);
         }
       }
     }
-
-    // save the img landmark to mobile's DCIM folder
-//    try {
-//      LOGGER.d("path = "+Environment.getExternalStorageDirectory()+"/"+Environment.DIRECTORY_DCIM+"/"+new SimpleDateFormat("EEEEE dd MMMMM yyyy HH:mm:ss.SSSZ").format(new Date())+".jpg");
-//      File f = new File(Environment.getExternalStorageDirectory()+"/"+Environment.DIRECTORY_DCIM+"/"+new SimpleDateFormat("EEEEE dd MMMMM yyyy HH:mm:ss.SSSZ").format(new Date())+".jpg");
-//      f.createNewFile();
-//      FileOutputStream fos = new FileOutputStream(f);
-//      if (bmp.compress(Bitmap.CompressFormat.JPEG, 100, fos)){
-//        fos.flush();
-//      }
-//      fos.close();
-//    } catch (FileNotFoundException e) {
-//      e.printStackTrace();
-//    } catch (IOException e) {
-//      e.printStackTrace();
-//    }
 
     Object[] inputArray2 = {imgData};
     Map<Integer, Object> outputJointMap = new HashMap<>();
@@ -483,64 +493,20 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
     landmarkTfLite.runForMultipleInputsOutputs(inputArray2, outputJointMap);
     Trace.endSection();
 
-    // cal Mtr inverse for returning the point
-    Mat mtrr = new Mat();
-    mtrr.create(2, 3, CvType.CV_32FC1);
-    mtr.convertTo(mtrr, CvType.CV_32FC1);
-    // add row {0,0,0}
-    // change (2,2) --> 1 && convert to float 32
-    Mat row = new Mat(1,3,CvType.CV_32FC1);
-    row.put(0, 0, 0f);
-    row.put(0, 1, 0f);
-    row.put(0, 2, 1f);
-    mtrr.push_back(row);
-    LOGGER.d("mtr = "+ mtr.dump());
-
-    Mat minv  = mtrr.inv(); //inverse and transpose
-    LOGGER.d("mtrr = "+ mtrr.dump());
-    LOGGER.d("minv = "+ minv.dump());
     LOGGER.d("outputJoints[0] = "+Arrays.toString(outputJoints[0]));
-
-    bmp =bmp.copy(Bitmap.Config.ARGB_8888, true);
+    // print the joints in the landmark bmp
+    affineBitmap =affineBitmap.copy(Bitmap.Config.ARGB_8888, true);
     for(int i = 0; i < outputJoints[0].length; i+=2) {
-      bmp.setPixel(Float.valueOf(outputJoints[0][i]).intValue(), Float.valueOf(outputJoints[0][i+1]).intValue(), Color.GREEN);
+      affineBitmap.setPixel(Float.valueOf(outputJoints[0][i]).intValue(), Float.valueOf(outputJoints[0][i+1]).intValue(), Color.GREEN);
     }
 
-    Mat mtri = minv.rowRange(0, 2);
-    LOGGER.d("mtri = "+mtri.dump());
-
-//    LOGGER.d("mtriNoScale = "+mtriNoScale.dump());
-//
-//    Imgproc.warpAffine(imgRawResult, imgRawResultTransform, mtriNoScale, new Size(256, 256));
-//    imgRawResultTransform.convertTo(imgRawResultTransformOut, CvType.CV_8UC4);
-//    Utils.matToBitmap(imgRawResultTransformOut, bmp);
-
-//    for(int i = 0; i < outputJoints[0].length; i+=2) {
-//      int x = Float.valueOf(outputJoints[0][i]).intValue();
-//      int y = Float.valueOf(outputJoints[0][i+1]).intValue();
-//      if (x >= 0 && x <= 256 && y >=0 && y <= 256)
-//        imgLandmark.put(y, x, new float[]{Float.MAX_VALUE, Float.MIN_VALUE, Float.MIN_VALUE, Float.MAX_VALUE});
-//    }
-
-//    Imgproc.warpAffine(imgRawResult, imgLandmark, mtri, new Size(1280, 1280));
-
-//    imgLandmark.convertTo(imgLandmarkOut, CvType.CV_8UC4);
-//    Utils.matToBitmap(imgLandmarkOut, bmp);
-
-//    Imgproc.warpAffine(imgPadFloatOut, imgRawResult, mtrr.rowRange(0, 2), new Size(256, 256),Imgproc.CV_WARP_INVERSE_MAP);
-
-//    Imgproc.warpAffine(imgRawResult, imgPadFloatOut, mtri, new Size(1280, 1280));
-
-//    Mat imgPadFloatOutOut = new Mat(1280, 1280, CvType.CV_8UC4);
-//    imgPadFloatOut.convertTo(imgPadFloatOutOut, CvType.CV_8UC4);
-//    Utils.matToBitmap(imgPadFloatOutOut, result1280);
-//
+    // save the img landmark in the mobile's DCIM folder
 //    try {
 //      LOGGER.d("path = "+Environment.getExternalStorageDirectory()+"/"+Environment.DIRECTORY_DCIM+"/"+new SimpleDateFormat("EEEEE dd MMMMM yyyy HH:mm:ss.SSSZ").format(new Date())+".jpg");
 //      File f = new File(Environment.getExternalStorageDirectory()+"/"+Environment.DIRECTORY_DCIM+"/"+new SimpleDateFormat("EEEEE dd MMMMM yyyy HH:mm:ss.SSSZ").format(new Date())+".jpg");
 //      f.createNewFile();
 //      FileOutputStream fos = new FileOutputStream(f);
-//      if (bmp.compress(Bitmap.CompressFormat.JPEG, 100, fos)){
+//      if (affineBitmap.compress(Bitmap.CompressFormat.JPEG, 100, fos)){
 //        fos.flush();
 //      }
 //      fos.close();
@@ -550,42 +516,21 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
 //      e.printStackTrace();
 //    }
 
+    // put the outputJoints in the joints array list
+    LOGGER.d("GESTURE = " + regconizeGesture(outputJoints[0]));
 
-    // cal outputjoint * minv
-    for(int i = 0; i < outputJoints[0].length; i+=6) {
-      Mat tmp = new Mat(3,3,CvType.CV_32FC1);
-      tmp.put(0, 0, new float[]{outputJoints[0][i]});
-      tmp.put(0, 1, new float[]{outputJoints[0][i+1]});
-      tmp.put(0, 2, new float[]{1});
-      tmp.put(1, 0, new float[]{outputJoints[0][i+2]});
-      tmp.put(1, 1, new float[]{outputJoints[0][i+3]});
-      tmp.put(1, 2, new float[]{1});
-      tmp.put(2, 0, new float[]{outputJoints[0][i+4]});
-      tmp.put(2, 1, new float[]{outputJoints[0][i+5]});
-      tmp.put(2, 2, new float[]{1});
-      LOGGER.d("tmp = "+ tmp.dump());
 
-      Mat result = tmp.mul(minv);
-      LOGGER.d("result = "+result.dump());
 
-      recognitions.add(new Recognition("" + (i), "origPoint", 1f, new RectF(
-              (float) result.get(0, 0)[0] - keypoint_side,
-              (float) result.get(0, 1)[0] - keypoint_side,
-              (float) result.get(0, 0)[0] + keypoint_side,
-              (float) result.get(0, 1)[0] + keypoint_side)));
+    // print the result to the screen
+//    for (int i = 0; i < joints.size(); i++){
+//      recognitions.add(new Recognition("" + (i), "origPoint", 1f, new RectF(
+//        (float) joints.get(i).x - keypoint_side,
+//        (float) joints.get(i).y - keypoint_side,
+//        (float) joints.get(i).x + keypoint_side,
+//        (float) joints.get(i).y + keypoint_side)));
+//    }
 
-      recognitions.add(new Recognition("" + (i+1), "origPoint", 1f, new RectF(
-              (float) result.get(1, 0)[0] - keypoint_side,
-              (float) result.get(1, 1)[0] - keypoint_side,
-              (float) result.get(1, 0)[0] + keypoint_side,
-              (float) result.get(1, 1)[0] + keypoint_side)));
 
-      recognitions.add(new Recognition("" + (i+2), "origPoint", 1f, new RectF(
-              (float) result.get(2, 0)[0] - keypoint_side,
-              (float) result.get(2, 1)[0] - keypoint_side,
-              (float) result.get(2, 0)[0] + keypoint_side,
-              (float) result.get(2, 1)[0] + keypoint_side)));
-    }
 
 
 
@@ -628,6 +573,23 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
     return recognitions;
   }
 
+  static void transformMatrix(Mat src, Matrix dst) {
+
+    int columns = src.cols();
+    int rows = src.rows();
+
+    float[] values = new float[columns * rows];
+    int index = 0;
+    for (int x = 0; x < columns; x++)
+      for (int y = 0; y < rows; y++) {
+        double[] value = src.get(x, y);
+        values[index] = (float) value[0];
+
+        index++;
+      }
+
+    dst.setValues(values);
+  }
 
   public static float[][] getTriangle(float kp0_x, float kp0_y ,float kp2_x, float kp2_y, float dist) {
     // cal triangle with kp x-coordinates
@@ -672,15 +634,6 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
     triangle[0] = new float[]{kp2_x - ((kp0_x-kp2_x) *.2f), kp2_y - ((kp0_y-kp2_y) * .2f) };
     triangle[1] = b[0];
     triangle[2] = c[0];
-
-    //scale
-//    int scale = 5 ;
-//
-//    for (int i = 0; i < triangle.length; i++){
-//      for (int j = 0; j <triangle[i].length; j++){
-//        triangle[i][j] *= scale;
-//      }
-//    }
 
     return triangle;
   }
@@ -746,5 +699,63 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
 
     }
     return out;
+  }
+
+  public static String regconizeGesture(float[] joints) {
+    // finger states
+    boolean thumbIsOpen = false;
+    boolean firstFingerIsOpen = false;
+    boolean secondFingerIsOpen = false;
+    boolean thirdFingerIsOpen = false;
+    boolean fourthFingerIsOpen = false;
+    LOGGER.d("gesture joints = "+ Arrays.toString(joints));
+
+    double pseudoFixKeyPoint = joints[2*2]; //compare x
+    if (joints[3*2] < pseudoFixKeyPoint && joints[4*2] < pseudoFixKeyPoint)
+    {
+      thumbIsOpen = true;
+    }
+
+    pseudoFixKeyPoint = joints[6*2 + 1]; //compare y
+    if (joints[7*2 + 1] < pseudoFixKeyPoint && joints[8*2 + 1] < pseudoFixKeyPoint)
+    {
+      firstFingerIsOpen = true;
+    }
+
+    pseudoFixKeyPoint = joints[10*2 + 1]; //compare y
+    if (joints[11*2 + 1] < pseudoFixKeyPoint && joints[12*2 + 1] < pseudoFixKeyPoint)
+    {
+      secondFingerIsOpen = true;
+    }
+
+    pseudoFixKeyPoint = joints[14*2 + 1]; //compare y
+    if (joints[15*2 + 1] < pseudoFixKeyPoint && joints[16*2 + 1] < pseudoFixKeyPoint)
+    {
+      thirdFingerIsOpen = true;
+    }
+
+    pseudoFixKeyPoint = joints[18*2 + 1]; //compare y
+    if (joints[19*2 + 1] < pseudoFixKeyPoint && joints[20*2 + 1] < pseudoFixKeyPoint)
+    {
+      fourthFingerIsOpen = true;
+    }
+    // Hand gesture recognition
+    if (thumbIsOpen && firstFingerIsOpen && secondFingerIsOpen && thirdFingerIsOpen && fourthFingerIsOpen)
+    {
+      return "FIVE";
+    } else if (!thumbIsOpen && firstFingerIsOpen && secondFingerIsOpen && thirdFingerIsOpen && fourthFingerIsOpen) {
+      return "FOUR";
+    }else if (thumbIsOpen && firstFingerIsOpen && secondFingerIsOpen && !thirdFingerIsOpen && !fourthFingerIsOpen) {
+      return "THREE";
+    }else if (!thumbIsOpen && firstFingerIsOpen && secondFingerIsOpen && !thirdFingerIsOpen && !fourthFingerIsOpen) {
+      return "TWO";
+    }else if (!thumbIsOpen && firstFingerIsOpen && !secondFingerIsOpen && !thirdFingerIsOpen && !fourthFingerIsOpen) {
+      return "ONE";
+    }else if (!thumbIsOpen && !firstFingerIsOpen && !secondFingerIsOpen && !thirdFingerIsOpen && !fourthFingerIsOpen) {
+      return "ZERO";
+    }else if (thumbIsOpen && !firstFingerIsOpen && !secondFingerIsOpen && !thirdFingerIsOpen && !fourthFingerIsOpen) {
+      return "LIKE";
+    }
+    return "no GESTURE detected";
   }
 }

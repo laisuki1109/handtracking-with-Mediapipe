@@ -119,7 +119,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     previewWidth = size.getWidth();
     previewHeight = size.getHeight();
 
-    sensorOrientation = 0; //rotation - getScreenOrientation();
+    sensorOrientation = rotation - getScreenOrientation();
     LOGGER.i("Camera orientation relative to screen canvas: %d", sensorOrientation);
 
     LOGGER.i("Initializing at size %dx%d", previewWidth, previewHeight);
@@ -127,7 +127,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     croppedBitmap = Bitmap.createBitmap(cropSize, cropSize, Config.ARGB_8888);
 
     frameToCropTransform =
-        ImageUtils.getTransformationMatrix(
+        ImageUtils.getTransformationMatrixContain(
             previewWidth, previewHeight,
             cropSize, cropSize,
             sensorOrientation, MAINTAIN_ASPECT);
@@ -165,8 +165,8 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     LOGGER.i("Preparing image " + currTimestamp + " for detection in bg thread.");
 
 //    rgbFrameBitmap = BitmapFactory.decodeFile(Environment.getExternalStorageDirectory()+"/"+Environment.DIRECTORY_DCIM+"/20200203_204820.jpg");
-    rgbFrameBitmap = BitmapFactory.decodeFile(Environment.getExternalStorageDirectory()+"/"+Environment.DIRECTORY_DCIM+"/img_norm.bmp");
-//    rgbFrameBitmap.setPixels(getRgbBytes(), 0, previewWidth, 0, 0, previewWidth, previewHeight);
+//    rgbFrameBitmap = BitmapFactory.decodeFile(Environment.getExternalStorageDirectory()+"/"+Environment.DIRECTORY_DCIM+"/img_norm.bmp");
+    rgbFrameBitmap.setPixels(getRgbBytes(), 0, previewWidth, 0, 0, previewWidth, previewHeight);
 
     readyForNextImage();
 
@@ -183,7 +183,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
           public void run() {
             LOGGER.i("Running detection on image " + currTimestamp);
             final long startTime = SystemClock.uptimeMillis();
-            final List<Classifier.Recognition> results = detector.recognizeImage(croppedBitmap);
+            final List<Classifier.Recognition> results = detector.recognizeImage(croppedBitmap, rgbFrameBitmap);
             lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
 
             cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
@@ -210,7 +210,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
 //                if (result.getTitle() != "origPoint")
 //                  cropToFrameTransform.mapRect(location);
-
+                cropToFrameTransform.mapRect(location);
                 result.setLocation(location);
                 mappedRecognitions.add(result);
 
