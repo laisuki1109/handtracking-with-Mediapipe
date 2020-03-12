@@ -382,37 +382,20 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
               candidate_detect[max_idx][k+1]+center_wo_offst_y + keypoint_side)));
     }
     // print the palm bbox
-    recognitions.add(new Recognition("" + 0, "palm",  (float)(1 / (1 + Math.exp(-outputClf[0][clf_max_idx][0]))), new RectF(
-            center_wo_offst_x - side/2,
-            center_wo_offst_y - side/2,
-            center_wo_offst_x + side/2,
-            center_wo_offst_y + side/2)));
+//    recognitions.add(new Recognition("" + 0, "palm",  (float)(1 / (1 + Math.exp(-outputClf[0][clf_max_idx][0]))), new RectF(
+//            center_wo_offst_x - side/2,
+//            center_wo_offst_y - side/2,
+//            center_wo_offst_x + side/2,
+//            center_wo_offst_y + side/2)));
 //
-//    try {
-//      LOGGER.d("path = "+Environment.getExternalStorageDirectory()+"/"+Environment.DIRECTORY_DCIM+"/"+new SimpleDateFormat("EEEEE dd MMMMM yyyy HH:mm:ss.SSSZ").format(new Date())+".jpg");
-//      File f = new File(Environment.getExternalStorageDirectory()+"/"+Environment.DIRECTORY_DCIM+"/"+new SimpleDateFormat("EEEEE dd MMMMM yyyy HH:mm:ss.SSSZ").format(new Date())+".jpg");
-//      f.createNewFile();
-//      FileOutputStream fos = new FileOutputStream(f);
-//      if (bitmap.compress(Bitmap.CompressFormat.JPEG, 100, fos)){
-//        fos.flush();
-//      }
-//      fos.close();
-//    } catch (FileNotFoundException e) {
-//      e.printStackTrace();
-//    } catch (IOException e) {
-//      e.printStackTrace();
-//    }
 
-
-
+    // calculate the mtr matrix for cropthe hand landmark image
     Mat mtr = Imgproc.getAffineTransform(source, targetTriangle);
     LOGGER.d("mtr = "+ mtr.dump());
     // cal Mtr inverse for returning the point
     Mat mtrr = new Mat();
     mtrr.create(2, 3, CvType.CV_32FC1);
     mtr.convertTo(mtrr, CvType.CV_32FC1);
-
-
     // add row {0,0,0}
     // change (2,2) --> 1 && convert to float 32
     Mat row = new Mat(1,3,CvType.CV_32FC1);
@@ -420,15 +403,10 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
     row.put(0, 1, 0f);
     row.put(0, 2, 1f);
     mtrr.push_back(row);
-
-    Mat minv  = mtrr.inv(); //inverse and transpose
-    Mat mtri = minv.rowRange(0, 2);
     LOGGER.d("mtr = "+ mtr.dump());
     LOGGER.d("mtrr = "+ mtrr.dump());
 
-//    LOGGER.d("minv = "+ minv.dump());
-//    LOGGER.d("mtri = "+mtri.dump());
-
+    // convert the openCV mtr Mat --> Android Matrix
     Matrix mMtr = new Matrix();
     transformMatrix(mtrr, mMtr);
     float[] range = {1,0,0,0,1,0,0,0,1};
@@ -494,11 +472,12 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
     Trace.endSection();
 
     LOGGER.d("outputJoints[0] = "+Arrays.toString(outputJoints[0]));
+
     // print the joints in the landmark bmp
-    affineBitmap =affineBitmap.copy(Bitmap.Config.ARGB_8888, true);
-    for(int i = 0; i < outputJoints[0].length; i+=2) {
-      affineBitmap.setPixel(Float.valueOf(outputJoints[0][i]).intValue(), Float.valueOf(outputJoints[0][i+1]).intValue(), Color.GREEN);
-    }
+//    affineBitmap =affineBitmap.copy(Bitmap.Config.ARGB_8888, true);
+//    for(int i = 0; i < outputJoints[0].length; i+=2) {
+//      affineBitmap.setPixel(Float.valueOf(outputJoints[0][i]).intValue(), Float.valueOf(outputJoints[0][i+1]).intValue(), Color.GREEN);
+//    }
 
     // save the img landmark in the mobile's DCIM folder
 //    try {
@@ -517,18 +496,21 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
 //    }
 
     // put the outputJoints in the joints array list
-    LOGGER.d("GESTURE = " + regconizeGesture(outputJoints[0]));
 
+    String gesture = "";
 
+    if (outputJoints[0][4] < outputJoints[0][34] ){
+      gesture = recognizeLeftGesture(outputJoints[0]);
+    }else{
+      gesture = recognizeRightGesture(outputJoints[0]);
+    }
 
-    // print the result to the screen
-//    for (int i = 0; i < joints.size(); i++){
-//      recognitions.add(new Recognition("" + (i), "origPoint", 1f, new RectF(
-//        (float) joints.get(i).x - keypoint_side,
-//        (float) joints.get(i).y - keypoint_side,
-//        (float) joints.get(i).x + keypoint_side,
-//        (float) joints.get(i).y + keypoint_side)));
-//    }
+    LOGGER.d("GESTURE = " + gesture);
+    recognitions.add(new Recognition("" + 0, gesture,  (float)(1 / (1 + Math.exp(-outputClf[0][clf_max_idx][0]))), new RectF(
+            center_wo_offst_x - side/2,
+            center_wo_offst_y - side/2,
+            center_wo_offst_x + side/2,
+            center_wo_offst_y + side/2)));
 
 
 
@@ -666,43 +648,9 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
 
   }
 
-  public static Mat norm(Mat in) { // only support CV_8UC4
-    Mat out = new Mat(in.rows(), in.cols(), CvType.CV_32FC4);
-    for(int i=0;i<in.rows();i++) {
-      for(int j=0;j<in.cols();j++) {
-        byte b[] = new byte[4];
-        out.put(i, j, new float[]{
-                2 * ((b[0]/255) - 0.5f),
-                2 * ((b[1]/255) - 0.5f),
-                2 * ((b[2]/255) - 0.5f),
-                2 * ((b[3]/255) - 0.5f),
-        });
-      }
-
-    }
-    return out;
-  }
-
-  public static Mat norm2(Mat in) { // only support CV_8UC4
-    Mat out = new Mat(in.rows(), in.cols(), CvType.CV_32FC4);
-    for(int i=0;i<in.rows();i++) {
-      for(int j=0;j<in.cols();j++) {
-//        byte b[] = new byte[4];
-        out.put(i, j, new float[]{
-                (((float)in.get(i,j)[0])),
-                (((float)in.get(i,j)[1])),
-                (((float)in.get(i,j)[2])),
-                (((float)in.get(i,j)[3])),
-        });
-//        LOGGER.d("out = "+ out.get(i,j)[0]);
-      }
-
-    }
-    return out;
-  }
-
-  public static String regconizeGesture(float[] joints) {
+  public static String recognizeLeftGesture(float[] joints) {
     // finger states
+    // front of left hand and back of right hand
     boolean thumbIsOpen = false;
     boolean firstFingerIsOpen = false;
     boolean secondFingerIsOpen = false;
@@ -712,6 +660,65 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
 
     double pseudoFixKeyPoint = joints[2*2]; //compare x
     if (joints[3*2] < pseudoFixKeyPoint && joints[4*2] < pseudoFixKeyPoint)
+    {
+      thumbIsOpen = true;
+    }
+
+    pseudoFixKeyPoint = joints[6*2 + 1]; //compare y
+    if (joints[7*2 + 1] < pseudoFixKeyPoint && joints[8*2 + 1] < pseudoFixKeyPoint)
+    {
+      firstFingerIsOpen = true;
+    }
+
+    pseudoFixKeyPoint = joints[10*2 + 1]; //compare y
+    if (joints[11*2 + 1] < pseudoFixKeyPoint && joints[12*2 + 1] < pseudoFixKeyPoint)
+    {
+      secondFingerIsOpen = true;
+    }
+
+    pseudoFixKeyPoint = joints[14*2 + 1]; //compare y
+    if (joints[15*2 + 1] < pseudoFixKeyPoint && joints[16*2 + 1] < pseudoFixKeyPoint)
+    {
+      thirdFingerIsOpen = true;
+    }
+
+    pseudoFixKeyPoint = joints[18*2 + 1]; //compare y
+    if (joints[19*2 + 1] < pseudoFixKeyPoint && joints[20*2 + 1] < pseudoFixKeyPoint)
+    {
+      fourthFingerIsOpen = true;
+    }
+    // Hand gesture recognition
+    if (thumbIsOpen && firstFingerIsOpen && secondFingerIsOpen && thirdFingerIsOpen && fourthFingerIsOpen)
+    {
+      return "FIVE";
+    } else if (!thumbIsOpen && firstFingerIsOpen && secondFingerIsOpen && thirdFingerIsOpen && fourthFingerIsOpen) {
+      return "FOUR";
+    }else if (thumbIsOpen && firstFingerIsOpen && secondFingerIsOpen && !thirdFingerIsOpen && !fourthFingerIsOpen) {
+      return "THREE";
+    }else if (!thumbIsOpen && firstFingerIsOpen && secondFingerIsOpen && !thirdFingerIsOpen && !fourthFingerIsOpen) {
+      return "TWO";
+    }else if (!thumbIsOpen && firstFingerIsOpen && !secondFingerIsOpen && !thirdFingerIsOpen && !fourthFingerIsOpen) {
+      return "ONE";
+    }else if (!thumbIsOpen && !firstFingerIsOpen && !secondFingerIsOpen && !thirdFingerIsOpen && !fourthFingerIsOpen) {
+      return "ZERO";
+    }else if (thumbIsOpen && !firstFingerIsOpen && !secondFingerIsOpen && !thirdFingerIsOpen && !fourthFingerIsOpen) {
+      return "LIKE";
+    }
+    return "no GESTURE detected";
+  }
+
+  public static String recognizeRightGesture(float[] joints) {
+    // finger states
+    // front of right hand and back of left hand
+    boolean thumbIsOpen = false;
+    boolean firstFingerIsOpen = false;
+    boolean secondFingerIsOpen = false;
+    boolean thirdFingerIsOpen = false;
+    boolean fourthFingerIsOpen = false;
+    LOGGER.d("gesture joints = "+ Arrays.toString(joints));
+
+    double pseudoFixKeyPoint = joints[2*2]; //compare x
+    if (joints[3*2] > pseudoFixKeyPoint && joints[4*2] > pseudoFixKeyPoint)
     {
       thumbIsOpen = true;
     }
